@@ -5,7 +5,26 @@
 
 #define PRINT_DICE		// Uncomment for intermediary print
 
-#define rnd(mx)	(rand() % mx + 1)
+/// http://xoroshiro.di.unimi.it/
+#if 1 //USE_SPLITMIX64
+    #include <stdint.h>
+
+    static uint64_t seed; /* The state can be seeded with any value. */
+
+    uint64_t next(void) {
+        uint64_t z = (seed += 0x9e3779b97f4a7c15ULL);
+        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+        return z ^ (z >> 31);
+    }
+
+    #define SEED()      seed = time(NULL)
+    #define RINT(mx)	(next() % (mx) + 1)
+#else
+    #define SEED()      srand(time(NULL))
+    #define RINT(mx)	(rand() % (mx) + 1)
+#endif
+
 
 // { dice, faces, modifier }
 static int values[3] = { 0 };
@@ -24,9 +43,9 @@ int rollDice() {
 	
 	while (i++ < DICE) {
 		#ifdef PRINT_DICE
-			rnd += (tmp = rnd(FACES));
+            rnd += (tmp = RINT(FACES));
 		#else
-			rnd += rnd(FACES);
+            rnd += RINT(FACES);
 		#endif
 		
 		#ifdef PRINT_DICE
@@ -36,7 +55,8 @@ int rollDice() {
 	}
 	
 	#ifdef PRINT_DICE
-		if (MOD > 0) printf(" + %d", MOD);
+		     if (MOD < 0) printf(" - %d", -MOD);
+		else if (MOD > 0) printf(" + %d", MOD);
 		printf(" )  ==  ");
 	#endif
 
@@ -44,26 +64,45 @@ int rollDice() {
 }
 
 int main(void) {
-	srand(time(NULL));
-	char str[20], *pch;
-	int i; 
+    SEED();
+    char str[20], *start, *end;
+    int has_mod;
 	
 	while(1) {
-		DICE = FACES = MOD = 0;
-		do {
+        do {
+            DICE = FACES = MOD = has_mod = 0;
+            memset(str, 0, sizeof(str));
+            
 			//system("CLS");
-			printf("Enter dice format as <dice>d<faces>+<modifier>, e.g. 2d6+3: ");
-			scanf("%20s", &str);
+            printf("Enter dice format as <dice>d<faces>[+|-]<modifier>, e.g. 2d6+3: ");
+            scanf("%19s", str);
 
-			pch = strtok(str, "d+");
-			for (i = 0; i < 3 && pch != NULL; i++) {
-				values[i] = atoi(pch);
-				pch = strtok(NULL, "d+");
-			}
-			
-		} while(DICE < 1 || FACES < 1 || MOD < 0);
+            #if 1 /// More complex but accurate parsing
+                for (start = end = str; *end != '\0'; end++) {
+                    if (strchr("d+-", *end) != NULL) { // delimiter at place end
+                        switch (*end) {
+                            case 'd':
+                                DICE  = strtol(start, &end, 10); end++; break;
+                            default: // + or -
+                                FACES = strtol(start, &end, 10); has_mod = 1; break;
+                        }
+                        start = end;
+                    }
+                }
 
-		printf("\n\t%dd%d+%d  ==  ", DICE, FACES, MOD);
+                if (has_mod) MOD   = strtol(start, &end, 10);
+                else         FACES = strtol(start, &end, 10);
+            #else
+                /// Simple with [X]d[Y]+[(-)Z]
+                pch = strtok(str, "d");
+                for (i = 0; i < 3 && pch != NULL; i++) {
+                    values[i] = atoi(pch);
+                    pch = strtok(NULL, "d+");
+                }
+            #endif
+		} while(DICE < 1 || FACES < 1);
+
+        printf("\n\t%dd%d%+d  ==  ", DICE, FACES, MOD);
 		printf("%2d\n\n", rollDice());
 	}
 	
